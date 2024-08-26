@@ -62,8 +62,8 @@ class FluxClipModel(torch.nn.Module):
         if "text_model.encoder.layers.1.mlp.fc1.weight" in sd:
             return self.clip_l.load_sd(sd)
         else:
-            from bizyairenhancer import clip_quantize_model
-            clip_quantize_model(self.t5xxl.transformer, sd)
+            from bizyairenhancer import fp8_quantize_model
+            fp8_quantize_model(self.t5xxl.transformer, sd)
             return self.t5xxl.load_sd(sd)
 
 def flux_clip(dtype_t5=None):
