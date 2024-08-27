@@ -294,10 +294,13 @@ class ModelPatcher:
                     sd.pop(k)
         return sd
 
-    def patch_weight_to_device(self, key, device_to=None, inplace_update=False, scale=None):
+    def patch_weight_to_device(self, key, device_to=None, inplace_update=False, module=None):
         if key not in self.patches:
             return
-
+        if hasattr(module, "scale"):
+            scale = module.scale
+        else:
+            scale = None
         weight = comfy.utils.get_attr(self.model, key)
 
         inplace_update = self.weight_inplace_update or inplace_update
@@ -318,6 +321,7 @@ class ModelPatcher:
 
         if scale is not None:
             out_weight, scale, device = fp8_quantize(out_weight)
+            module.register_buffer("scale", scale.to(device))
 
         if inplace_update:
             comfy.utils.copy_to_param(self.model, key, out_weight)
@@ -378,9 +382,8 @@ class ModelPatcher:
             if hasattr(m, "comfy_patched_weights"):
                 if m.comfy_patched_weights == True:
                     continue
-            scale = m.scale if hasattr(m, "scale") else None
-            self.patch_weight_to_device(weight_key, device_to=device_to, scale=scale)
-            self.patch_weight_to_device(bias_key, device_to=device_to, scale=scale)
+            self.patch_weight_to_device(weight_key, device_to=device_to, module=m)
+            self.patch_weight_to_device(bias_key, device_to=device_to, module=m)
             logging.debug("lowvram: loaded module regularly {} {}".format(n, m))
             m.comfy_patched_weights = True
 
