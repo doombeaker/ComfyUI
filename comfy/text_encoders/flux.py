@@ -33,7 +33,6 @@ class FluxTokenizer:
     def state_dict(self):
         return {}
 
-
 class FluxClipModel(torch.nn.Module):
     def __init__(self, dtype_t5=None, device="cpu", dtype=None, model_options={}):
         super().__init__()
@@ -62,8 +61,6 @@ class FluxClipModel(torch.nn.Module):
         if "text_model.encoder.layers.1.mlp.fc1.weight" in sd:
             return self.clip_l.load_sd(sd)
         else:
-            from bizyairenhancer import fp8_quantize_model
-            fp8_quantize_model(self.t5xxl.transformer, sd)
             return self.t5xxl.load_sd(sd)
 
 def flux_clip(dtype_t5=None):
