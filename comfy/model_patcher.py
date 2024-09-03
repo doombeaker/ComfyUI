@@ -321,7 +321,7 @@ class ModelPatcher:
 
         if scale is not None:
             out_weight, scale, device = fp8_quantize(out_weight)
-            module.register_buffer("scale", scale.to(device))
+            #module.scale = torch.nn.Parameter(scale.to(device))
 
         if inplace_update:
             comfy.utils.copy_to_param(self.model, key, out_weight)
