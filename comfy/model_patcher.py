@@ -30,6 +30,8 @@ import comfy.model_management
 import comfy.lora
 from comfy.types import UnetWrapperFunction
 
+from comfy.cli_args import args
+
 def string_to_seed(data):
     crc = 0xFFFFFFFF
     for byte in data:
@@ -316,7 +318,10 @@ class ModelPatcher:
         weight = comfy.utils.get_attr(self.model, key)
 
         inplace_update = self.weight_inplace_update or inplace_update
-
+        if type(self.model).__name__ == "Flux":
+            # use "cuda:1" as offload device for FLUX
+            if "," in args.cuda_device:
+                self.offload_device = torch.device("cuda", 1)
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
 
