@@ -324,7 +324,8 @@ class ModelPatcher:
                 self.offload_device = torch.device("cuda", 1)
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
-            scale_key = f"{key.rsplit('.', 1)[0]}.scale"
+        scale_key = f"{key.rsplit('.', 1)[0]}.scale"
+        if scale_key not in self.backup:
             if scale is not None:
                 self.backup[scale_key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(scale.to(device=self.offload_device, copy=inplace_update), inplace_update)
         if device_to is not None:
