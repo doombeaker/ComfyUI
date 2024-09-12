@@ -311,7 +311,7 @@ class ModelPatcher:
     def patch_weight_to_device(self, key, device_to=None, inplace_update=False, module=None):
         if key not in self.patches:
             return
-        if hasattr(module, "scale"):
+        if module is not None and hasattr(module, "scale"):
             scale = module.scale
         else:
             scale = None
