@@ -34,7 +34,6 @@ class FluxTokenizer:
     def state_dict(self):
         return {}
 
-
 class FluxClipModel(torch.nn.Module):
     def __init__(self, dtype_t5=None, device="cpu", dtype=None, model_options={}):
         super().__init__()

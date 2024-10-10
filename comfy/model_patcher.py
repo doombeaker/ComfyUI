@@ -30,6 +30,8 @@ import comfy.model_management
 import comfy.lora
 from comfy.comfy_types import UnetWrapperFunction
 
+from comfy.cli_args import args
+
 def string_to_seed(data):
     crc = 0xFFFFFFFF
     for byte in data:
@@ -94,6 +96,8 @@ class LowVramPatch:
             return comfy.float.stochastic_rounding(comfy.lora.calculate_weight(self.patches[self.key], weight.to(intermediate_dtype), self.key, intermediate_dtype=intermediate_dtype), weight.dtype, seed=string_to_seed(self.key))
 
         return comfy.lora.calculate_weight(self.patches[self.key], weight, self.key, intermediate_dtype=intermediate_dtype)
+
+from bizyairenhancer import fp8_quantize, fp8_dequantize
 class ModelPatcher:
     def __init__(self, model, load_device, offload_device, size=0, weight_inplace_update=False):
         self.size = size
@@ -313,23 +317,41 @@ class ModelPatcher:
                     sd.pop(k)
         return sd
 
-    def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
+    def patch_weight_to_device(self, key, device_to=None, inplace_update=False, module=None):
         if key not in self.patches:
             return
-
+        if module is not None and hasattr(module, "scale"):
+            scale = module.scale
+        else:
+            scale = None
         weight = comfy.utils.get_attr(self.model, key)
 
         inplace_update = self.weight_inplace_update or inplace_update
-
+        if type(self.model).__name__ == "Flux":
+            # use "cuda:1" as offload device for FLUX
+            if "," in args.cuda_device:
+                self.offload_device = torch.device("cuda", 1)
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
-
+        scale_key = f"{key.rsplit('.', 1)[0]}.scale"
+        if scale_key not in self.backup:
+            if scale is not None:
+                self.backup[scale_key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(scale.to(device=self.offload_device, copy=inplace_update), inplace_update)
         if device_to is not None:
+            if scale is not None:
+                weight = fp8_dequantize(weight, scale, weight.device)
             temp_weight = comfy.model_management.cast_to_device(weight, device_to, torch.float32, copy=True)
         else:
+            if scale is not None:
+                weight = fp8_dequantize(weight, scale, weight.device)
             temp_weight = weight.to(torch.float32, copy=True)
         out_weight = comfy.lora.calculate_weight(self.patches[key], temp_weight, key)
-        out_weight = comfy.float.stochastic_rounding(out_weight, weight.dtype, seed=string_to_seed(key))
+        out_weight = comfy.float.stochastic_rounding(out_weight, weight.dtype)
+
+        if scale is not None:
+            out_weight, scale, device = fp8_quantize(out_weight)
+            module.scale = torch.nn.Parameter(scale.to(device))
+
         if inplace_update:
             comfy.utils.copy_to_param(self.model, key, out_weight)
         else:
@@ -397,9 +419,8 @@ class ModelPatcher:
             if hasattr(m, "comfy_patched_weights"):
                 if m.comfy_patched_weights == True:
                     continue
-
-            self.patch_weight_to_device(weight_key, device_to=device_to)
-            self.patch_weight_to_device(bias_key, device_to=device_to)
+            self.patch_weight_to_device(weight_key, device_to=device_to, module=m)
+            self.patch_weight_to_device(bias_key, device_to=device_to, module=m)
             logging.debug("lowvram: loaded module regularly {} {}".format(n, m))
             m.comfy_patched_weights = True
 
