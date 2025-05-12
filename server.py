@@ -629,6 +629,7 @@ class PromptServer():
         @routes.post("/prompt")
         async def post_prompt(request):
             logging.info("got prompt")
+            
             json_data =  await request.json()
             json_data = self.trigger_on_prompt(json_data)
 
@@ -654,7 +655,53 @@ class PromptServer():
                 if valid[0]:
                     prompt_id = str(uuid.uuid4())
                     outputs_to_execute = valid[2]
-                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))
+                    # self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))
+                    response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
+                    
+                    from pathlib import Path
+                    import requests
+                    import time
+                    comfyagent_host="127.0.0.1"
+                    comfyagent_port=8111
+                    base_url = f"http://{comfyagent_host}:{comfyagent_port}"
+                    prompt = json.loads(Path("/home/yaochi/ComfyUI/api_default_wf_comfyagent_sdxl.json").read_text())
+                    reqid = str(uuid.uuid4())
+                    data = {"prompt": json.dumps(prompt), "reqid": reqid}
+                    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+
+                    print(f"try to connect {base_url}/prompt/stream...")
+                    start_time = time.time()
+                    images = []
+
+                    with requests.post(f"{base_url}/prompt/stream", json=data, headers=headers, stream=True) as response:
+                        print(f"connected, status code: {response.status_code}")
+
+                        buffer = ""
+                        current_event = None
+
+                        for line in response.iter_lines(decode_unicode=True):
+                            if not line:
+                                # empty line means the end of an event
+                                if buffer and current_event:
+                                    #  server.send_sync("executed", { "node": unique_id, "display_node": display_node_id, "output": cached_output.get("output",None), "prompt_id": prompt_id }, server.client_id)
+                                    print(f"event: {current_event}, data: {buffer}")
+                                    data = json.loads(buffer)
+                                    # import pdb;pdb.set_trace()
+                                    if 'type' in data and 'data' in data:
+                                        await asyncio.sleep(0) 
+                                        self.send_sync(data['type'], data['data'])
+                                    if "outputs" in data:
+                                        images.append(data["outputs"]["9"]["images"][0]["filename"])
+                                    buffer = ""
+                                    current_event = None
+
+                            elif line.startswith("event: "):
+                                current_event = line[7:].strip()
+
+                            elif line.startswith("data: "):
+                                buffer = line[6:].strip()
+                    
+                    # origin comfyui response:
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
                     return web.json_response(response)
                 else:
